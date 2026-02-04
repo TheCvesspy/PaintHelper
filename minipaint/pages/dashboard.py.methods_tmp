@@ -1,0 +1,58 @@
+    # --- Owned Paints logic ---
+    async def fetch_owned_paints(self):
+        if not self.user: return
+        try:
+             # Select catalog_paints with brand name too for Stats/Display
+             res = supabase.table("user_paints").select(
+                 "id, paint_id, catalog_paints(id, name, color_hex, product_code, paint_sets(name), paint_brands(name))"
+             ).eq("user_id", self.user.get("id")).order("created_at", desc=True).execute()
+             self.owned_paints = res.data
+        except Exception as e:
+             print(f"Error fetching owned: {e}")
+             
+    async def add_to_owned(self, paint_id: str):
+        if not self.user: return
+        try:
+            payload = {"user_id": self.user.get("id"), "paint_id": paint_id}
+            supabase.table("user_paints").insert(payload).execute()
+            rx.toast("Added to Owned", status="success")
+            # Refresh owned list
+            await self.fetch_owned_paints()
+            # Also refresh library stats if we display them there? (Maybe count badge?)
+            # For now just owned list.
+        except Exception as e:
+            if "23505" in str(e) or "duplicate key" in str(e):
+                 rx.toast("Already owned", status="info")
+            else:
+                 rx.toast(f"Title: Error adding paint. Details: {str(e)}", status="error")
+
+    async def remove_from_owned(self, user_paint_id: str):
+        try:
+             supabase.table("user_paints").delete().eq("id", user_paint_id).execute()
+             rx.toast("Removed from Owned", status="info")
+             await self.fetch_owned_paints()
+        except Exception as e:
+             rx.toast(f"Error removing: {str(e)}")
+             
+    @rx.var
+    def owned_stats(self) -> list[dict]:
+        # Compute stats from self.owned_paints
+        # Return list of {name: BrandName, count: X}
+        counts = {}
+        for p in self.owned_paints:
+            # Navigate nested structure: p['catalog_paints']['paint_brands']['name']
+            # Safety check
+            cp = p.get('catalog_paints')
+            if not cp: continue
+            
+            # paint_brands might be dict or None
+            pb = cp.get('paint_brands')
+            brand_name = pb.get('name') if pb else "Unknown"
+            
+            counts[brand_name] = counts.get(brand_name, 0) + 1
+            
+        # Convert to list
+        stats = [{"name": k, "count": v} for k, v in counts.items()]
+        # Sort by count desc
+        stats.sort(key=lambda x: x['count'], reverse=True)
+        return stats

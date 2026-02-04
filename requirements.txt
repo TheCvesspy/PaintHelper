@@ -1,0 +1,7 @@
+reflex==0.8.26
+supabase==2.15.0
+google-api-python-client
+google-auth-oauthlib
+Pillow>=10.0.0
+fastapi
+httpx
